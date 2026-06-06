@@ -592,9 +592,15 @@ class GoogleModel(Model[Client]):
         )
         if self._provider.name not in _GEMINI_API_PROVIDER_NAMES:
             # The fields are not supported by the Gemini API per https://github.com/googleapis/python-genai/blob/7e4ec284dc6e521949626f3ed54028163ef9121d/google/genai/models.py#L1195-L1214
-            config.update(  # pragma: lax no cover
+            # Strip native tools (web search, code execution, etc.) from the
+            # count_tokens request: they are unknown to the count_tokens endpoint,
+            # and it may reject them (#5781, mirror of #5704 for Anthropic).
+            tools = cast(list[ToolDict], generation_config.get('tools')) or []
+            native_tool_keys = {'google_search', 'url_context', 'code_execution', 'file_search'}
+            filtered_tools = [t for t in tools if not native_tool_keys & set(t)]
+            config.update(  # pragma: no cover
                 system_instruction=generation_config.get('system_instruction'),
-                tools=cast(list[ToolDict], generation_config.get('tools')),
+                tools=cast(list[ToolDict], filtered_tools),
                 # Annoyingly, GenerationConfigDict has fewer fields than GenerateContentConfigDict, and no extra fields are allowed.
                 generation_config=GenerationConfigDict(
                     temperature=generation_config.get('temperature'),
